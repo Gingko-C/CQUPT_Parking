@@ -20,6 +20,7 @@ Mat Diff_and_Detect(Mat video_t, Mat background)
 
 	vector<vector<Point>> contours_v;
 
+	Rect rect;
 	//进行差分获得前景
 	absdiff(video_t, background, foreground);
 
@@ -27,10 +28,12 @@ Mat Diff_and_Detect(Mat video_t, Mat background)
 	cvtColor(foreground, foreground_gray, CV_RGB2GRAY);
 
 	//进行二值化
-	threshold(foreground_gray, foreground_threshold, 50, 255, CV_THRESH_BINARY);
+	threshold(foreground_gray, foreground_threshold, 35, 255, CV_THRESH_BINARY);
 
 	//对右上方矩形区域进行置0操作，但是最右上角留下了两个1值点，这是对于一个未解决的bug的妥协。
 	//bug描述：如果右上方矩形区域在二值化后全为0，可以正常绘制边缘，但在绘制外接矩形时会造成vector的越界。经实验只有右上方矩形区域二值化后不全为0，就不会触发bug。
+	//解决方案更新：以下解决代码已经注释。因为我在截取的背景background时在右上角添加了一个（0，0，0）的点，这样子就不会出现右上方差分后全为0的情况。
+	/*
 	for (int i = 0; i < 60; i++)
 	{
 		for (int j = 15; j < 75; j++)
@@ -39,14 +42,19 @@ Mat Diff_and_Detect(Mat video_t, Mat background)
 			foreground_threshold.at<Vec2b>(i,j) = (0,0);
 		}
 	}
+	*/
+
+	cout << foreground_threshold.at<Vec2b>(0, 74)[0];
 
 	//首先获取膨胀和腐蚀操作需要的 自定义核element
 	Mat element = getStructuringElement(MORPH_RECT, Size(3, 3));//通常通过getStructuringElement(内核形状：MORPH_RECT（矩形）MORPH_CROSS（交叉型）MORPH_ELLIPSE（椭圆形）;尺寸;锚点位置默认Point(-1,-1)表示位于中心)
 	
 	//高斯模糊、腐蚀和膨胀
-	GaussianBlur(foreground_threshold, foreground_threshold, Size(5, 5), 0, 0);
+	GaussianBlur(foreground_threshold, foreground_threshold, Size(3, 3), 0, 0);
 	erode(foreground_threshold, foreground_x, element);
-	dilate(foreground_x, foreground_x, element);
+	//dilate(foreground_x, foreground_x, element);
+	//dilate(foreground_x, foreground_x, element);
+	//erode(foreground_threshold, foreground_x, element);
 
 	//为显示效果进行了升采样
 	pyrUp(foreground_x, foreground_x); 
@@ -64,13 +72,44 @@ Mat Diff_and_Detect(Mat video_t, Mat background)
 	findContours(foreground_x, contours_v, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);//contours_v中存储封闭边缘
 
 	drawContours(contours, contours_v, -1, color);//绘制边缘
-	
+
 	//读取contours_v中的每个边缘，并生成外接矩形r，如果r满足条件则显示在结果画面上
 	for (int i = 0; i <= contours_v.size()-1;i++)
 	{
 		Rect r = boundingRect(Mat(contours_v[i]));
-		if (r.width > 50)
-			rectangle(video_t, r, Scalar(0, 255, 0), 2);
+		if (r.width > 150 && r.height > 120)
+		{
+			if (r.y > 500)
+			{
+				rect = r;
+				rect.width = 450;
+				rect.height = 200;
+				rect.x += 50;
+				circle(video_t, Point(rect.x+150, rect.y+100), 20, Scalar(0, 0, 255),-1);
+			}
+			else if (r.y <= 200)
+			{
+				rect = r;
+				//rect.x = (r.x+r.width)*0.2;
+				//if (rect.x < 0) rect.x = 0;
+				if (r.height > 400)
+					rect.y = r.y+r.height - 500;
+				//if (rect.y < 0) rect.y = 0;
+				rect.height = 450;
+				rect.width = 200;
+				circle(video_t, Point(rect.x + 80, rect.y + rect.height*0.1), 20, Scalar(0, 0, 255), -1);
+
+			}
+			else
+			{
+				rect = r;
+				rect.x += 50;
+				rect.width -= 50;
+				circle(video_t, Point(rect.x + 100, rect.y + rect.height*0.2), 20, Scalar(0, 0, 255), -1);
+			}
+			rectangle(video_t, rect, Scalar(0, 255, 0), 2);
+			cout << r.y << endl;
+		}	
 	}
 	
 	return video_t;
@@ -188,7 +227,7 @@ int main()
 	Mat frame_2;
 	Mat frame_3;
 
-	Mat frame_target(100, 150, CV_8UC3,Scalar(0,0,0));
+	Mat frame_target(100, 150, CV_8UC3,Scalar(255,255,255));
 	Mat frame_detection;
 
 	Mat RoI_1(frame_target, Rect(50, 60, 100, 40));
@@ -205,7 +244,6 @@ int main()
 		{
 			break;
 		}
-
 
 		frame_1 = jiaozheng(frame_1);
 		pyrDown(frame_1, frame_1);
